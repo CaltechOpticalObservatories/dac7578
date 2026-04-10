@@ -20,7 +20,7 @@ static int dac7578_reg_write(const struct device *dev,
                              uint8_t control_word,
 			                 uint16_t val);
 
-int dac7578_reg_update(const struct device *dev, 
+static int dac7578_reg_update(const struct device *dev,
                        uint8_t reg,
 			           uint16_t mask, 
                        bool setting);

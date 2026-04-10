@@ -60,7 +60,7 @@ static int dac7578_reg_write(const struct device *dev, uint8_t control_word,
 }
 
 
-int dac7578_reg_update(const struct device *dev, uint8_t reg,
+static int dac7578_reg_update(const struct device *dev, uint8_t reg,
 			 uint16_t mask, bool setting)
 {
 	uint16_t regval;
@@ -153,7 +153,7 @@ static int dac7578_write_value(const struct device *dev, uint8_t channel,
 		return -EINVAL;
 	}
 
-    control_word = (channel & 0x0F);
+    control_word = (channel & 0x0F); //input register of channel
 
 	regval = (value & 0x0FFF);
 
@@ -166,14 +166,43 @@ static int dac7578_write_value(const struct device *dev, uint8_t channel,
 	return 0;
 }
 
+static int dac7578_read_value(const struct device *dev, uint8_t channel,
+		       uint32_t *value)
+{
+	struct dac7578_data *data = dev->data;
+	uint8_t control_word;
+	uint16_t regval;
+	int ret;
 
+	if (channel > DAC7578_MAX_CHANNEL - 1) {
+		LOG_ERR("Unsupported channel %d", channel);
+		return -ENOTSUP;
+	}
+
+	if (!(data->configured & BIT(channel))) {
+		LOG_ERR("Channel %d not initialized", channel);
+		return -EINVAL;
+	}
+
+	control_word = (channel&0x0F) + 0x10; //DAC register, not the input register
+	ret = dac7578_reg_read(dev, control_word, &regval);
+	if (ret) {
+		LOG_ERR("I2C read value failed");
+		return -EIO;
+	}
+
+	regval = sys_be16_to_cpu(regval);
+	*value = (regval >> 4) & 0x0FFF;
+
+	return 0;
+}
 
 static int dac7578_soft_reset(const struct device *dev)
 {
     uint8_t control_word; 
 	int ret;
 
-    control_word = (0x07 << 4);
+    control_word = (0x07 << 4); //soft reset
 
 	// Send the software reset command (no value to write)
 	ret = dac7578_reg_write(dev, control_word, 0);
@@ -216,7 +245,7 @@ static int dac7578_init(const struct device *dev)
 
 static const struct dac_driver_api dac7578_driver_api = {
 	.channel_setup =  dac7578_channel_setup,
-	.write_value =  dac7578_write_value,
+	.write_value =  dac7578_write_value
 };
 
 
