@@ -166,7 +166,7 @@ static int dac7578_write_value(const struct device *dev, uint8_t channel,
 	return 0;
 }
 
-static int dac7578_read_value(const struct device *dev, uint8_t channel,
+int dac7578_read_value(const struct device *dev, uint8_t channel,
 		       uint32_t *value)
 {
 	struct dac7578_data *data = dev->data;

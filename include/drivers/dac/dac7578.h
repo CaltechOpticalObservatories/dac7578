@@ -14,7 +14,7 @@
 
 static int dac7578_reg_read(const struct device *dev, 
                             uint8_t reg,
-			                uint16_t *val);
+				                uint16_t *val);
 
 static int dac7578_reg_write(const struct device *dev, 
                              uint8_t control_word,
@@ -30,7 +30,10 @@ static int dac7578_channel_setup(const struct device *dev,
 
 static int dac7578_write_value(const struct device *dev, 
                                uint8_t channel,
-				               uint32_t value);        
+					               uint32_t value);        
+int dac7578_read_value(const struct device *dev, uint8_t channel,
+		       uint32_t *value);
+
 
 static int dac7578_soft_reset(const struct device *dev);        
 
