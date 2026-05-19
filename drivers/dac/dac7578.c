@@ -60,8 +60,8 @@ static int dac7578_reg_write(const struct device *dev, uint8_t control_word,
 }
 
 
-static int dac7578_reg_update(const struct device *dev, uint8_t reg,
-			 uint16_t mask, bool setting)
+static int __maybe_unused dac7578_reg_update(const struct device *dev, uint8_t reg,
+					     uint16_t mask, bool setting)
 {
 	uint16_t regval;
 	int ret;
