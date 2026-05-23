@@ -1,4 +1,4 @@
-# DAC7578 Zephyr DAC Driver
+# DAC7578/DAC7678 Zephyr DAC Driver
 
 ## Usage
 
@@ -44,9 +44,17 @@ Here is an example of defining the DAC7578 in your .overlay:
     dac7578: dac7578@4c {
         compatible = "ti,dac7578";
         reg = <0x4c>;
+        #io-channel-cells = <1>;
+        ti,clear-mode = "disabled";
+        ti,reference = "external";
     };
 };
 ```
+
+DAC7678 nodes use `compatible = "ti,dac7678"` and can select
+`ti,reference = "external"`, `"internal-static"`, or `"internal-flexible"`.
+`ti,clear-mode` accepts `"default"`, `"zero-scale"`, `"midscale"`,
+`"full-scale"`, and `"disabled"`.
 
 ## Import
 

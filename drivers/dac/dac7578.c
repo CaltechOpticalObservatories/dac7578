@@ -1,5 +1,5 @@
 /**
- * @file Driver for DAC7578 I2C-based 8-Channel DAC.
+ * @file Driver for DAC7578/DAC7678 I2C-based 8-channel DACs.
  */
 
 
@@ -19,10 +19,31 @@ LOG_MODULE_REGISTER(i2c_dac7578);
 
 #define DT_DRV_COMPAT ti_dac7578
 
+enum dac7578_clear_mode {
+	DAC7578_CLEAR_DEFAULT,
+	DAC7578_CLEAR_ZERO_SCALE,
+	DAC7578_CLEAR_MIDSCALE,
+	DAC7578_CLEAR_FULL_SCALE,
+	DAC7578_CLEAR_DISABLED,
+};
+
+enum dac7578_reference_mode {
+	DAC7578_REF_EXTERNAL,
+	DAC7578_REF_INTERNAL_STATIC,
+	DAC7578_REF_INTERNAL_FLEXIBLE,
+};
+
+enum dac7578_device_type {
+	DAC7578_TYPE_DAC7578,
+	DAC7578_TYPE_DAC7678,
+};
 
 struct dac7578_config {
 	struct i2c_dt_spec bus;
 	uint8_t resolution;
+	enum dac7578_device_type type;
+	enum dac7578_clear_mode clear_mode;
+	enum dac7578_reference_mode reference_mode;
 };
 
 struct dac7578_data {
@@ -134,7 +155,7 @@ static int dac7578_write_value(const struct device *dev, uint8_t channel,
 {
 	const struct dac7578_config *config = dev->config;
 	struct dac7578_data *data = dev->data;
-    uint8_t control_word;
+	uint8_t control_word;
 	uint16_t regval;
 	int ret;
 
@@ -153,7 +174,7 @@ static int dac7578_write_value(const struct device *dev, uint8_t channel,
 		return -EINVAL;
 	}
 
-    control_word = (channel & 0x0F); //input register of channel
+	control_word = (channel & 0x0F); /* Input register for channel. */
 
 	regval = (value & 0x0FFF);
 
@@ -184,7 +205,7 @@ int dac7578_read_value(const struct device *dev, uint8_t channel,
 		return -EINVAL;
 	}
 
-	control_word = (channel&0x0F) + 0x10; //DAC register, not the input register
+	control_word = (channel & 0x0F) + 0x10; /* DAC register, not input register. */
 	ret = dac7578_reg_read(dev, control_word, &regval);
 	if (ret) {
 		LOG_ERR("I2C read value failed");
@@ -199,10 +220,10 @@ int dac7578_read_value(const struct device *dev, uint8_t channel,
 
 static int dac7578_soft_reset(const struct device *dev)
 {
-    uint8_t control_word; 
+	uint8_t control_word;
 	int ret;
 
-    control_word = (0x07 << 4); //soft reset
+	control_word = (0x07 << 4); /* Software reset command. */
 
 	// Send the software reset command (no value to write)
 	ret = dac7578_reg_write(dev, control_word, 0);
@@ -217,6 +238,80 @@ static int dac7578_soft_reset(const struct device *dev)
 	return 0;
 }
 
+static int dac7578_configure_clear(const struct device *dev)
+{
+	const struct dac7578_config *config = dev->config;
+	uint8_t clear_code;
+	int ret;
+
+	if (config->clear_mode == DAC7578_CLEAR_DEFAULT) {
+		return 0;
+	}
+
+	switch (config->clear_mode) {
+	case DAC7578_CLEAR_ZERO_SCALE:
+		clear_code = 0U;
+		break;
+	case DAC7578_CLEAR_MIDSCALE:
+		clear_code = 1U;
+		break;
+	case DAC7578_CLEAR_FULL_SCALE:
+		clear_code = 2U;
+		break;
+	case DAC7578_CLEAR_DISABLED:
+		clear_code = 3U;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = dac7578_reg_write(dev, 0x50, clear_code);
+	if (ret != 0) {
+		LOG_ERR("Clear-code configuration failed");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int dac7578_configure_reference(const struct device *dev)
+{
+	const struct dac7578_config *config = dev->config;
+	int ret;
+
+	if (config->reference_mode != DAC7578_REF_EXTERNAL &&
+	    config->type != DAC7578_TYPE_DAC7678) {
+		LOG_ERR("Internal reference requested on device without internal reference");
+		return -ENOTSUP;
+	}
+
+	switch (config->reference_mode) {
+	case DAC7578_REF_EXTERNAL:
+		if (config->type != DAC7578_TYPE_DAC7678) {
+			return 0;
+		}
+		ret = dac7578_reg_write(dev, 0x80, 0U);
+		break;
+	case DAC7578_REF_INTERNAL_STATIC:
+		ret = dac7578_reg_write(dev, 0x80, 1U);
+		break;
+	case DAC7578_REF_INTERNAL_FLEXIBLE:
+		/* DAC7678 flexible mode code 0b101 keeps the internal
+		 * reference powered regardless of DAC power-down state.
+		 */
+		ret = dac7578_reg_write(dev, 0x90, 5U);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (ret != 0) {
+		LOG_ERR("Reference configuration failed");
+		return -EIO;
+	}
+
+	return 0;
+}
 
 static int dac7578_init(const struct device *dev)
 {
@@ -235,6 +330,16 @@ static int dac7578_init(const struct device *dev)
 		return ret;
 	}
 
+	ret = dac7578_configure_reference(dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = dac7578_configure_clear(dev);
+	if (ret != 0) {
+		return ret;
+	}
+
 	data->configured = 0;
 
 	LOG_DBG("Init complete");
@@ -248,28 +353,27 @@ static const struct dac_driver_api dac7578_driver_api = {
 	.write_value =  dac7578_write_value
 };
 
-
-#define INST_DT_DAC7578(inst) DT_INST(inst, ti_dac7578)
-
-#define DAC7578_DEVICE(n) \
-	static struct dac7578_data dac7578_data_##n; \
-	static const struct dac7578_config dac7578_config_##n = { \
-		.bus = I2C_DT_SPEC_GET(INST_DT_DAC7578(n)), \
+#define DAC7578_DEVICE(node_id, dev_type) \
+	static struct dac7578_data dac7578_data_##node_id; \
+	static const struct dac7578_config dac7578_config_##node_id = { \
+		.bus = I2C_DT_SPEC_GET(node_id), \
 		.resolution = 12, \
+		.type = dev_type, \
+		.clear_mode = DT_ENUM_IDX_OR(node_id, ti_clear_mode, DAC7578_CLEAR_DEFAULT), \
+		.reference_mode = DT_ENUM_IDX_OR(node_id, ti_reference, DAC7578_REF_EXTERNAL), \
 	}; \
-	DEVICE_DT_DEFINE(INST_DT_DAC7578(n), \
+	DEVICE_DT_DEFINE(node_id, \
 				&dac7578_init, NULL, \
-				&dac7578_data_##n, \
-				&dac7578_config_##n, POST_KERNEL, \
+				&dac7578_data_##node_id, \
+				&dac7578_config_##node_id, POST_KERNEL, \
 				CONFIG_DAC7578_INIT_PRIORITY, \
 				&dac7578_driver_api)
 
-/* Define the instantiation macro */
-#define CALL_WITH_ARG(arg, expr) expr(arg)
+#define DAC7578_DEVICE_DAC7578(node_id) \
+	DAC7578_DEVICE(node_id, DAC7578_TYPE_DAC7578);
 
-#define INST_DT_DAC7578_FOREACH(inst_expr) \
-	LISTIFY(DT_NUM_INST_STATUS_OKAY(ti_dac7578), \
-		     CALL_WITH_ARG, (), inst_expr)
+#define DAC7578_DEVICE_DAC7678(node_id) \
+	DAC7578_DEVICE(node_id, DAC7578_TYPE_DAC7678);
 
-/* Instantiate all DAC7578 devices */
-INST_DT_DAC7578_FOREACH(DAC7578_DEVICE);
+DT_FOREACH_STATUS_OKAY(ti_dac7578, DAC7578_DEVICE_DAC7578)
+DT_FOREACH_STATUS_OKAY(ti_dac7678, DAC7578_DEVICE_DAC7678)

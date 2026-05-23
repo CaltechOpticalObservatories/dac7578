@@ -1,0 +1,42 @@
+# Copyright (c) 2026 Caltech Optical Observatories
+# SPDX-License-Identifier: Apache-2.0
+
+description: TI DAC7678 12-bit octal I2C DAC with 2.5 V internal reference
+
+compatible: "ti,dac7678"
+
+include: [dac-controller.yaml, i2c-device.yaml]
+
+properties:
+  "#io-channel-cells":
+    const: 1
+
+  ti,clear-mode:
+    type: string
+    default: "default"
+    enum:
+      - "default"
+      - "zero-scale"
+      - "midscale"
+      - "full-scale"
+      - "disabled"
+    description: |
+      Optional clear-code register initialization. "disabled" disables the
+      external CLR pin.
+
+  ti,reference:
+    type: string
+    default: "external"
+    enum:
+      - "external"
+      - "internal-static"
+      - "internal-flexible"
+    description: |
+      Reference configuration applied during init. "external" leaves the
+      internal reference disabled. "internal-static" enables the internal
+      reference using the static reference register. "internal-flexible"
+      enables the flexible reference mode that keeps the reference powered
+      regardless of DAC channel power-down state.
+
+io-channel-cells:
+  - output

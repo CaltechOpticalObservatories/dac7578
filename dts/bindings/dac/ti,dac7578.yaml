@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Caltech Optical Observatories
+# SPDX-License-Identifier: Apache-2.0
+
+description: TI DAC7578 12-bit octal I2C DAC
+
+compatible: "ti,dac7578"
+
+include: [dac-controller.yaml, i2c-device.yaml]
+
+properties:
+  "#io-channel-cells":
+    const: 1
+
+  ti,clear-mode:
+    type: string
+    default: "default"
+    enum:
+      - "default"
+      - "zero-scale"
+      - "midscale"
+      - "full-scale"
+      - "disabled"
+    description: |
+      Optional clear-code register initialization. "disabled" disables the
+      external CLR pin in devices that support the DACx578 clear-code command.
+
+  ti,reference:
+    type: string
+    default: "external"
+    enum:
+      - "external"
+    description: |
+      DAC7578 uses the external supply/reference path; internal reference
+      modes are only available on compatible DAC7678 devices.
+
+io-channel-cells:
+  - output
