@@ -1,19 +1,37 @@
-# DAC7875 Octal DAC configuration options
+# DAC7x78 octal DAC configuration options
 
 #
 # Copyright (c) 2024 FKMG Circuits
 #
 
-menuconfig DAC7578
-	bool "DAC7578 Octal DAC"
+menuconfig DAC7X78
+	bool "DAC7x78 octal DAC"
 	depends on I2C
 	depends on DAC
 	help
-	  Enable the driver for the TI DAC7578.
+	  Enable the shared driver for TI DAC7578 and DAC7678 I2C DACs.
+
+config DAC7578
+	bool "Legacy DAC7578 driver option"
+	depends on I2C
+	depends on DAC
+	select DAC7X78
+	help
+	  Compatibility option for projects that enabled this fork before it
+	  supported both DAC7578 and DAC7678. New projects should use DAC7X78.
 
 config DAC7578_INIT_PRIORITY
-    int "Initialization priority for TI DAC7578"
-    default 80
-    depends on DAC7578
-    help
-      Set the initialization priority for the TI DAC7578 driver.
+	int "Legacy initialization priority for TI DAC7578"
+	default 80
+	depends on DAC7578
+	help
+	  Compatibility option retained for old configurations. New projects
+	  should use DAC7X78_INIT_PRIORITY.
+
+config DAC7X78_INIT_PRIORITY
+	int "Initialization priority for TI DAC7x78"
+	default DAC7578_INIT_PRIORITY if DAC7578
+	default 80
+	depends on DAC7X78
+	help
+	  Set the initialization priority for the TI DAC7x78 driver.

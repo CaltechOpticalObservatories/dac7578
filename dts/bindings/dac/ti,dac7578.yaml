@@ -13,7 +13,6 @@ properties:
 
   ti,clear-mode:
     type: string
-    default: "default"
     enum:
       - "default"
       - "zero-scale"
@@ -23,15 +22,22 @@ properties:
     description: |
       Optional clear-code register initialization. "disabled" disables the
       external CLR pin in devices that support the DACx578 clear-code command.
+      If omitted, the driver leaves the clear-code register unchanged at init.
 
   ti,reference:
     type: string
-    default: "external"
     enum:
       - "external"
     description: |
       DAC7578 uses the external supply/reference path; internal reference
-      modes are only available on compatible DAC7678 devices.
+      modes are only available on compatible DAC7678 devices. If omitted, the
+      driver leaves reference configuration unchanged at init.
+
+  ti,reset-on-init:
+    type: boolean
+    description: |
+      Send the software-reset command during Zephyr device initialization. This
+      can disturb analog outputs after an MCU-only reboot, so it is opt-in.
 
 io-channel-cells:
   - output

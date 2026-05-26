@@ -3,4 +3,4 @@
 #
 
 zephyr_include_directories(include)
-add_subdirectory_ifdef(CONFIG_DAC7578 drivers/dac)
+add_subdirectory_ifdef(CONFIG_DAC7X78 drivers/dac)

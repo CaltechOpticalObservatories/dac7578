@@ -3,4 +3,4 @@
 #
 
 zephyr_library_amend()
-zephyr_library_sources_ifdef(CONFIG_DAC7578 dac7578.c)
+zephyr_library_sources_ifdef(CONFIG_DAC7X78 dac7x78.c)

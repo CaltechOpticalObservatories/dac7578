@@ -13,7 +13,6 @@ properties:
 
   ti,clear-mode:
     type: string
-    default: "default"
     enum:
       - "default"
       - "zero-scale"
@@ -22,11 +21,11 @@ properties:
       - "disabled"
     description: |
       Optional clear-code register initialization. "disabled" disables the
-      external CLR pin.
+      external CLR pin. If omitted, the driver leaves the clear-code register
+      unchanged at init.
 
   ti,reference:
     type: string
-    default: "external"
     enum:
       - "external"
       - "internal-static"
@@ -36,7 +35,14 @@ properties:
       internal reference disabled. "internal-static" enables the internal
       reference using the static reference register. "internal-flexible"
       enables the flexible reference mode that keeps the reference powered
-      regardless of DAC channel power-down state.
+      regardless of DAC channel power-down state. If omitted, the driver leaves
+      reference configuration unchanged at init.
+
+  ti,reset-on-init:
+    type: boolean
+    description: |
+      Send the software-reset command during Zephyr device initialization. This
+      can disturb analog outputs after an MCU-only reboot, so it is opt-in.
 
 io-channel-cells:
   - output

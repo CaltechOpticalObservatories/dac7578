@@ -1,4 +1,4 @@
-# DAC7578/DAC7678 Zephyr DAC Driver
+# DAC7x78 Zephyr DAC Driver
 
 ## Usage
 
@@ -26,13 +26,13 @@ Add this entry to your .conf:
 ```
 # DAC
 CONFIG_DAC=y
-CONFIG_DAC7578=y
+CONFIG_DAC7X78=y
 ```
 
 
 ## Overlay
 
-Here is an example of defining the DAC7578 in your .overlay:
+Here is an example of defining a DAC7578 in your .overlay:
 
 ```
 &i2c2 {
@@ -41,7 +41,7 @@ Here is an example of defining the DAC7578 in your .overlay:
     pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
     pinctrl-names = "default";
 
-    dac7578: dac7578@4c {
+    dac7x78: dac@4c {
         compatible = "ti,dac7578";
         reg = <0x4c>;
         #io-channel-cells = <1>;
@@ -51,10 +51,13 @@ Here is an example of defining the DAC7578 in your .overlay:
 };
 ```
 
+DAC7578 nodes use `compatible = "ti,dac7578"`.
 DAC7678 nodes use `compatible = "ti,dac7678"` and can select
 `ti,reference = "external"`, `"internal-static"`, or `"internal-flexible"`.
 `ti,clear-mode` accepts `"default"`, `"zero-scale"`, `"midscale"`,
 `"full-scale"`, and `"disabled"`.
+The driver does not send a software reset during Zephyr device initialization
+unless the node sets `ti,reset-on-init`.
 
 ## Import
 
@@ -62,20 +65,20 @@ For read/write functions (and possibly more?), you'll need to include the follow
 
 ```
 #include <zephyr/drivers/dac.h>
-#include <drivers/dac/dac7578.h>
+#include <drivers/dac/dac7x78.h>
 ```
 
 You can get the device by its node label:
 
 ```
-#define DAC DEVICE_DT_GET(DT_NODELABEL(dac7578))
+#define DAC DEVICE_DT_GET(DT_NODELABEL(dac7x78))
 
 const struct device *const dac_dev = DAC;
 
-static void dac7578_init() {
+static void dac7x78_init() {
   /* Check device readiness */
   if (!device_is_ready(dac_dev)) {
-    LOG_ERR("dac7578 is NOT ready!");
+    LOG_ERR("dac7x78 is NOT ready!");
   }
   ...
 };
