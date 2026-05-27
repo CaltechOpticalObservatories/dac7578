@@ -351,7 +351,7 @@ static int dac7x78_init(const struct device *dev)
 }
 
 
-static const struct dac_driver_api dac7x78_driver_api = {
+static DEVICE_API(dac, dac7x78_driver_api) = {
 	.channel_setup =  dac7x78_channel_setup,
 	.write_value =  dac7x78_write_value
 };
