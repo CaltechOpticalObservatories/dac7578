@@ -211,7 +211,6 @@ int dac7x78_read_value(const struct device *dev, uint8_t channel,
 		return -EIO;
 	}
 
-	regval = sys_be16_to_cpu(regval);
 	*value = (regval >> 4) & 0x0FFF;
 
 	return 0;
