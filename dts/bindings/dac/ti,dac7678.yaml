@@ -38,6 +38,19 @@ properties:
       regardless of DAC channel power-down state. If omitted, the driver leaves
       reference configuration unchanged at init.
 
+  ti,avdd-microvolt:
+    type: int
+    description: |
+      DAC analog supply in microvolts. Used by the optional DAC7x78 transfer
+      helper to clip ideal output calculations to the output rail.
+
+  ti,vref-microvolt:
+    type: int
+    description: |
+      Reference voltage in microvolts. Internal-reference modes default to the
+      DAC7678 nominal 2.5 V reference when this property is omitted. External
+      reference users of the DAC7x78 transfer helper must set this property.
+
   ti,reset-on-init:
     type: boolean
     description: |

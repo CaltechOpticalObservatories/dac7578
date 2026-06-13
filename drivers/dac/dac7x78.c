@@ -15,6 +15,20 @@
 
 LOG_MODULE_REGISTER(dac7x78, CONFIG_DAC_LOG_LEVEL);
 
+#define DAC7X78_CMD_DAC_READ(channel)		(0x10U + ((channel) & 0x07U))
+#define DAC7X78_CMD_DAC_WRITE_UPDATE(channel)	(0x30U + ((channel) & 0x07U))
+#define DAC7X78_CMD_POWER_DOWN			0x40U
+#define DAC7X78_CMD_CLEAR_CODE			0x50U
+#define DAC7X78_CMD_SOFT_RESET			0x70U
+#define DAC7678_CMD_REFERENCE_STATIC		0x80U
+#define DAC7678_CMD_REFERENCE_FLEXIBLE		0x90U
+#define DAC7X78_DAC_CODE_SHIFT			4U
+#define DAC7X78_POWER_CHANNEL_SHIFT		5U
+#define DAC7X78_POWER_PD_SHIFT			13U
+#define DAC7X78_INTERNAL_REFERENCE_UV		2500000U
+#define DAC7X78_INTERNAL_REFERENCE_GAIN		2U
+#define DAC7X78_DEFAULT_AVDD_UV			3300000U
+
 enum dac7x78_clear_mode {
 	DAC7X78_CLEAR_DEFAULT,
 	DAC7X78_CLEAR_ZERO_SCALE,
@@ -40,6 +54,8 @@ struct dac7x78_config {
 	enum dac7x78_model model;
 	enum dac7x78_clear_mode clear_mode;
 	enum dac7678_reference_mode reference_mode;
+	uint32_t avdd_uv;
+	uint32_t vref_uv;
 	bool reset_on_init;
 	bool configure_clear;
 	bool configure_reference;
@@ -66,52 +82,25 @@ static int dac7x78_reg_read(const struct device *dev, uint8_t reg,
 }
 
 static int dac7x78_reg_write(const struct device *dev, uint8_t control_word,
-			       uint16_t val)
+			     uint16_t val)
 {
 	const struct dac7x78_config *cfg = dev->config;
 	uint8_t buf[3];
 
 	buf[0] = control_word;
 
-	buf[1] = (val >> 4) & 0xFF;
-	buf[2] = (val & 0x0F) << 4;
+	buf[1] = (val >> 8) & 0xFF;
+	buf[2] = (val & 0xFF);
 
 	return i2c_write_dt(&cfg->bus, buf, sizeof(buf));
 }
 
-
-static int __maybe_unused dac7x78_reg_update(const struct device *dev, uint8_t reg,
-					     uint16_t mask, bool setting)
-{
-	uint16_t regval;
-	int ret;
-
-	ret = dac7x78_reg_read(dev, reg, &regval);
-	if (ret) {
-		return -EIO;
-	}
-
-	if (setting) {
-		regval |= mask;
-	} else {
-		regval &= ~mask;
-	}
-
-	ret = dac7x78_reg_write(dev, reg, regval);
-	if (ret) {
-		return ret;
-	}
-
-	return 0;
-}
 
 static int dac7x78_channel_setup(const struct device *dev,
 				   const struct dac_channel_cfg *channel_cfg)
 {
 	const struct dac7x78_config *config = dev->config;
 	struct dac7x78_data *data = dev->data;
-	uint8_t control_word;
-	int ret;
 
 	if (channel_cfg->channel_id > DAC7X78_CHANNEL_COUNT - 1) {
 		LOG_ERR("Unsupported channel %d", channel_cfg->channel_id);
@@ -123,22 +112,9 @@ static int dac7x78_channel_setup(const struct device *dev,
 		return -ENOTSUP;
 	}
 
-	// if (channel_cfg->internal) {
-	// 	LOG_ERR("Internal channels not supported");
-	// 	return -ENOTSUP;
-	// }
-
 	if (data->configured & BIT(channel_cfg->channel_id)) {
 		LOG_DBG("Channel %d already configured", channel_cfg->channel_id);
 		return 0;
-	}
-
-	control_word = (0x00 << 4) | (channel_cfg->channel_id & 0x07);
-
-	ret = dac7x78_reg_write(dev, control_word, 0);
-	if (ret) {
-		LOG_ERR("Unable to power up channel %d", channel_cfg->channel_id);
-		return -EIO;
 	}
 
 	data->configured |= BIT(channel_cfg->channel_id);
@@ -173,9 +149,8 @@ static int dac7x78_write_value(const struct device *dev, uint8_t channel,
 		return -EINVAL;
 	}
 
-	control_word = (channel & 0x0F); /* Input register for channel. */
-
-	regval = (value & 0x0FFF);
+	control_word = DAC7X78_CMD_DAC_WRITE_UPDATE(channel);
+	regval = value << DAC7X78_DAC_CODE_SHIFT;
 
 	ret = dac7x78_reg_write(dev, control_word, regval);
 	if (ret) {
@@ -204,26 +179,87 @@ int dac7x78_read_value(const struct device *dev, uint8_t channel,
 		return -EINVAL;
 	}
 
-	control_word = (channel & 0x0F) + 0x10; /* DAC register, not input register. */
+	control_word = DAC7X78_CMD_DAC_READ(channel);
 	ret = dac7x78_reg_read(dev, control_word, &regval);
 	if (ret) {
 		LOG_ERR("I2C read value failed");
 		return -EIO;
 	}
 
-	*value = (regval >> 4) & 0x0FFF;
+	*value = (regval >> DAC7X78_DAC_CODE_SHIFT) & 0x0FFF;
+
+	return 0;
+}
+
+int dac7x78_set_power_state(const struct device *dev, uint8_t channel_mask,
+			    enum dac7x78_power_state state)
+{
+	uint16_t regval;
+	int ret;
+
+	if (dev == NULL) {
+		return -EINVAL;
+	}
+	if ((channel_mask & ~BIT_MASK(DAC7X78_CHANNEL_COUNT)) != 0U) {
+		return -EINVAL;
+	}
+	if (state < DAC7X78_POWER_NORMAL || state > DAC7X78_POWER_DOWN_HIGH_Z) {
+		return -EINVAL;
+	}
+	if (channel_mask == 0U) {
+		return 0;
+	}
+
+	regval = ((uint16_t)state << DAC7X78_POWER_PD_SHIFT) |
+		 ((uint16_t)channel_mask << DAC7X78_POWER_CHANNEL_SHIFT);
+	ret = dac7x78_reg_write(dev, DAC7X78_CMD_POWER_DOWN, regval);
+	if (ret != 0) {
+		LOG_ERR("Power-state write failed");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+int dac7x78_get_transfer(const struct device *dev,
+			 struct dac7x78_transfer *transfer)
+{
+	const struct dac7x78_config *config;
+	uint32_t ideal_uv;
+	uint32_t output_limit_uv;
+
+	if (dev == NULL || transfer == NULL) {
+		return -EINVAL;
+	}
+
+	config = dev->config;
+	if (config->reference_mode == DAC7678_REFERENCE_EXTERNAL) {
+		if (config->vref_uv == 0U) {
+			return -ENOTSUP;
+		}
+		ideal_uv = config->vref_uv;
+	} else if (config->model == DAC7X78_MODEL_DAC7678) {
+		uint32_t vref_uv = config->vref_uv == 0U ?
+				    DAC7X78_INTERNAL_REFERENCE_UV :
+				    config->vref_uv;
+
+		ideal_uv = vref_uv * DAC7X78_INTERNAL_REFERENCE_GAIN;
+	} else {
+		return -ENOTSUP;
+	}
+
+	output_limit_uv = MIN(ideal_uv, config->avdd_uv);
+	transfer->ideal_full_scale_uv = ideal_uv;
+	transfer->output_limit_uv = output_limit_uv;
 
 	return 0;
 }
 
 static int dac7x78_soft_reset(const struct device *dev)
 {
-	uint8_t control_word;
 	int ret;
 
-	control_word = (0x07 << 4); /* Software reset command. */
-
-	ret = dac7x78_reg_write(dev, control_word, 0);
+	ret = dac7x78_reg_write(dev, DAC7X78_CMD_SOFT_RESET, 0);
 	if (ret) {
 		LOG_ERR("Software reset failed");
 		return -EIO;
@@ -237,7 +273,7 @@ static int dac7x78_soft_reset(const struct device *dev)
 static int dac7x78_configure_clear(const struct device *dev)
 {
 	const struct dac7x78_config *config = dev->config;
-	uint8_t clear_code;
+	uint16_t clear_code;
 	int ret;
 
 	if (!config->configure_clear || config->clear_mode == DAC7X78_CLEAR_DEFAULT) {
@@ -246,22 +282,22 @@ static int dac7x78_configure_clear(const struct device *dev)
 
 	switch (config->clear_mode) {
 	case DAC7X78_CLEAR_ZERO_SCALE:
-		clear_code = 0U;
+		clear_code = 0;
 		break;
 	case DAC7X78_CLEAR_MIDSCALE:
-		clear_code = 1U;
+		clear_code = 0x10;
 		break;
 	case DAC7X78_CLEAR_FULL_SCALE:
-		clear_code = 2U;
+		clear_code = 0x20;
 		break;
 	case DAC7X78_CLEAR_DISABLED:
-		clear_code = 3U;
+		clear_code = 0x30;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	ret = dac7x78_reg_write(dev, 0x50, clear_code);
+	ret = dac7x78_reg_write(dev, DAC7X78_CMD_CLEAR_CODE, clear_code);
 	if (ret != 0) {
 		LOG_ERR("Clear-code configuration failed");
 		return -EIO;
@@ -290,16 +326,16 @@ static int dac7x78_configure_reference(const struct device *dev)
 		if (config->model != DAC7X78_MODEL_DAC7678) {
 			return 0;
 		}
-		ret = dac7x78_reg_write(dev, 0x80, 0U);
+		ret = dac7x78_reg_write(dev, DAC7678_CMD_REFERENCE_STATIC, 0);
 		break;
 	case DAC7678_REFERENCE_INTERNAL_STATIC:
-		ret = dac7x78_reg_write(dev, 0x80, 1U);
+		ret = dac7x78_reg_write(dev, DAC7678_CMD_REFERENCE_STATIC, 0x10);
 		break;
 	case DAC7678_REFERENCE_INTERNAL_FLEXIBLE:
 		/* DAC7678 flexible mode code 0b101 keeps the internal
 		 * reference powered regardless of DAC power-down state.
 		 */
-		ret = dac7x78_reg_write(dev, 0x90, 5U);
+		ret = dac7x78_reg_write(dev, DAC7678_CMD_REFERENCE_FLEXIBLE, 0x5000);
 		break;
 	default:
 		return -EINVAL;
@@ -363,6 +399,8 @@ static DEVICE_API(dac, dac7x78_driver_api) = {
 		.model = device_model, \
 		.clear_mode = DT_ENUM_IDX_OR(node_id, ti_clear_mode, DAC7X78_CLEAR_DEFAULT), \
 		.reference_mode = DT_ENUM_IDX_OR(node_id, ti_reference, DAC7678_REFERENCE_EXTERNAL), \
+		.avdd_uv = DT_PROP_OR(node_id, ti_avdd_microvolt, DAC7X78_DEFAULT_AVDD_UV), \
+		.vref_uv = DT_PROP_OR(node_id, ti_vref_microvolt, 0), \
 		.reset_on_init = DT_PROP_OR(node_id, ti_reset_on_init, false), \
 		.configure_clear = DT_NODE_HAS_PROP(node_id, ti_clear_mode), \
 		.configure_reference = DT_NODE_HAS_PROP(node_id, ti_reference), \

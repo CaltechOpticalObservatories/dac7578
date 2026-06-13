@@ -33,6 +33,18 @@ properties:
       modes are only available on compatible DAC7678 devices. If omitted, the
       driver leaves reference configuration unchanged at init.
 
+  ti,avdd-microvolt:
+    type: int
+    description: |
+      DAC analog supply in microvolts. Used by the optional DAC7x78 transfer
+      helper to clip ideal output calculations to the output rail.
+
+  ti,vref-microvolt:
+    type: int
+    description: |
+      External reference voltage in microvolts. Required by users of the
+      DAC7x78 transfer helper when operating from an external reference.
+
   ti,reset-on-init:
     type: boolean
     description: |
